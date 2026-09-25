@@ -3,11 +3,30 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
-from codex_state_monitor.gui import launch
+
+def _make_stdout_utf8_safe() -> None:
+    """Never let console encoding kill the CLI.
+
+    A Windows console defaults to a legacy code page (cp1252 on most CI runners)
+    which cannot encode CJK text, so printing anything non-ASCII would raise
+    UnicodeEncodeError. Reconfigure once, and degrade to replacement characters
+    rather than crashing.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
 
 
 def main() -> None:
+    _make_stdout_utf8_safe()
+
     parser = argparse.ArgumentParser(
         description="Codex 降智监测：核对「请求的模型」是否就是「服务端实际返回的模型」。",
     )
@@ -24,24 +43,31 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.self_test:
+        # ASCII-only on purpose: this output must survive any console code page,
+        # including non-UTF-8 CI runners.
         from codex_state_monitor import config, credentials, identity
 
         client = identity.detect_client()
-        print(f"工具版本      : {config.APP_VERSION}")
-        print(f"检测到的 codex : {client.version or '未找到'}（来源：{client.source}）")
-        print(f"User-Agent     : {client.user_agent or '（不发）'}")
-        print(f"状态目录       : {config.STATE_DIR}")
+        print(f"tool version   : {config.APP_VERSION}")
+        print(f"codex detected : {client.version or 'not found'} (source: {client.source})")
+        print(f"user-agent     : {client.user_agent or '(omitted)'}")
+        print(f"state dir      : {config.STATE_DIR}")
         found = credentials.discover_codex_auth_path()
-        print(f"codex auth.json: {found or '未找到'}")
+        print(f"codex auth.json: {found or 'not found'}")
         try:
             creds = credentials.load_credentials()
-            print(f"凭据副本       : 可用（套餐 {creds.plan_type}，剩余约 {creds.expires_in // 60} 分钟）")
+            print(
+                f"credential copy: usable (plan {creds.plan_type}, "
+                f"~{creds.expires_in // 60} min left)"
+            )
         except credentials.CredentialError as exc:
-            print(f"凭据副本       : {exc}")
+            print(f"credential copy: {exc}")
         return
 
     launch(auth_path=args.auth_path)
 
 
 if __name__ == "__main__":
+    from codex_state_monitor.gui import launch
+
     main()
