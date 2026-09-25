@@ -73,10 +73,16 @@ class TestStdoutEncoding(unittest.TestCase):
                 timeout=120,
             )
         self.assertEqual(proc.returncode, 0, f"stderr was: {proc.stderr}")
-        try:
-            proc.stdout.encode("ascii")
-        except UnicodeEncodeError as exc:
-            self.fail(f"self-test output must stay ASCII, found: {exc}")
+        offenders = [
+            (index, line, [(pos, ch) for pos, ch in enumerate(line) if ord(ch) > 127])
+            for index, line in enumerate(proc.stdout.splitlines())
+            if any(ord(ch) > 127 for ch in line)
+        ]
+        self.assertFalse(
+            offenders,
+            "self-test output must stay ASCII, but these lines were not:\n"
+            + "\n".join(f"  line {i}: {line!r} offenders={bad}" for i, line, bad in offenders),
+        )
 
     def test_self_test_survives_missing_credentials(self):
         """With no credential copy the tool must report it, not crash."""

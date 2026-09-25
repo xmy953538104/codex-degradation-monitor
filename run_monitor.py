@@ -37,6 +37,16 @@ def _ascii_reason(exc: BaseException) -> str:
     return exc.__class__.__name__
 
 
+def _ascii(text: str) -> str:
+    """Render any string as ASCII.
+
+    Paths on the user's machine may contain characters this console cannot
+    encode (a CJK Windows user name, for example), so escape anything outside
+    ASCII rather than letting the print raise.
+    """
+    return str(text).encode("ascii", "backslashreplace").decode("ascii")
+
+
 def main() -> None:
     _make_stdout_utf8_safe()
 
@@ -62,11 +72,11 @@ def main() -> None:
 
         client = identity.detect_client()
         print(f"tool version   : {config.APP_VERSION}")
-        print(f"codex detected : {client.version or 'not found'} (source: {client.source})")
-        print(f"user-agent     : {client.user_agent or '(omitted)'}")
-        print(f"state dir      : {config.STATE_DIR}")
+        print(f"codex detected : {_ascii(client.version or 'not found')} (source: {_ascii(client.source)})")
+        print(f"user-agent     : {_ascii(client.user_agent) or '(omitted)'}")
+        print(f"state dir      : {_ascii(config.STATE_DIR)}")
         found = credentials.discover_codex_auth_path()
-        print(f"codex auth.json: {found or 'not found'}")
+        print(f"codex auth.json: {_ascii(found) if found else 'not found'}")
         try:
             creds = credentials.load_credentials()
             print(
