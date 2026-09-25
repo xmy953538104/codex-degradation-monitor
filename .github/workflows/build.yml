@@ -1,0 +1,86 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # Standard-library-only test suite: no pip install needed at all.
+  # ------------------------------------------------------------------ #
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show interpreter
+        run: python -c "import sys, platform; print(sys.version); print(platform.platform())"
+
+      - name: Compile check
+        run: python -m compileall -q codex_state_monitor run_monitor.py
+
+      - name: Unit tests (stdlib unittest only)
+        run: python -m unittest discover -s tests -v
+
+      - name: CLI self-test
+        run: python run_monitor.py --self-test
+
+  # ------------------------------------------------------------------ #
+  # Single-file Windows executable.
+  # ------------------------------------------------------------------ #
+  build-exe:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build one-file executable
+        run: >
+          python -m PyInstaller
+          --noconfirm --clean --onefile --windowed
+          --name codex-degradation-monitor
+          --collect-submodules tkinter
+          run_monitor.py
+
+      - name: Verify the executable exists
+        run: |
+          if (!(Test-Path "dist/codex-degradation-monitor.exe")) { throw "exe was not produced" }
+          Get-Item "dist/codex-degradation-monitor.exe" | Format-List Name,Length
+
+      - name: Smoke test the executable
+        run: |
+          # --self-test must exit 0 and print the detected client version.
+          $out = & "dist/codex-degradation-monitor.exe" --self-test 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { throw "self-test exited $LASTEXITCODE" }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-degradation-monitor-windows
+          path: dist/codex-degradation-monitor.exe
+          if-no-files-found: error
+
+      - name: Attach to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/codex-degradation-monitor.exe
+          generate_release_notes: true

@@ -1,0 +1,17 @@
+# PyInstaller build output
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local state (never commit credentials or evidence)
+.codex_state_monitor/
+credentials.json
+credentials.*.bak
+evidence/
+reports/
