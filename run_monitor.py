@@ -24,6 +24,19 @@ def _make_stdout_utf8_safe() -> None:
             pass
 
 
+def _ascii_reason(exc: BaseException) -> str:
+    """Summarize an exception in ASCII, for consoles that cannot encode CJK."""
+    text = str(exc)
+    lowered = text.lower()
+    if "同步" in text or "sync" in lowered:
+        return "not synced yet - press the sync button in the GUI"
+    if "损坏" in text or "corrupt" in lowered:
+        return "credential file is corrupted - sync again"
+    if "token" in lowered:
+        return "credential file has no access token - sync again"
+    return exc.__class__.__name__
+
+
 def main() -> None:
     _make_stdout_utf8_safe()
 
@@ -61,7 +74,9 @@ def main() -> None:
                 f"~{creds.expires_in // 60} min left)"
             )
         except credentials.CredentialError as exc:
-            print(f"credential copy: {exc}")
+            # The exception text is localized for the GUI. This output must stay
+            # ASCII so it survives any console code page, so report it in English.
+            print(f"credential copy: unavailable ({_ascii_reason(exc)})")
         return
 
     launch(auth_path=args.auth_path)

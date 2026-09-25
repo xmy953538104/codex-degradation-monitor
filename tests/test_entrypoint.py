@@ -7,10 +7,10 @@ entry point must survive any console encoding.
 
 from __future__ import annotations
 
-import io
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,20 +52,49 @@ class TestStdoutEncoding(unittest.TestCase):
         self.assertIn("codex detected", proc.stdout)
 
     def test_self_test_output_stays_ascii(self):
-        """Keeping the CLI output ASCII is what makes it portable."""
-        proc = subprocess.run(
-            [sys.executable, os.path.join(ROOT, "run_monitor.py"), "--self-test"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
+        """Keeping the CLI output ASCII is what makes it portable.
+
+        The state directory is redirected to an empty temp dir so this asserts
+        the tool's own output rather than whatever happens to be on the machine
+        running the test -- the first version of this test passed locally only
+        because credentials already existed here.
+        """
+        with tempfile.TemporaryDirectory() as state_dir:
+            env = dict(os.environ)
+            env["CODEX_MONITOR_STATE_DIR"] = state_dir
+            env["PYTHONIOENCODING"] = "utf-8"
+            proc = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "run_monitor.py"), "--self-test"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                timeout=120,
+            )
         self.assertEqual(proc.returncode, 0, f"stderr was: {proc.stderr}")
         try:
             proc.stdout.encode("ascii")
         except UnicodeEncodeError as exc:
             self.fail(f"self-test output must stay ASCII, found: {exc}")
+
+    def test_self_test_survives_missing_credentials(self):
+        """With no credential copy the tool must report it, not crash."""
+        with tempfile.TemporaryDirectory() as state_dir:
+            env = dict(os.environ)
+            env["CODEX_MONITOR_STATE_DIR"] = state_dir
+            proc = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "run_monitor.py"), "--self-test"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                timeout=120,
+            )
+        self.assertEqual(proc.returncode, 0, f"stderr was: {proc.stderr}")
+        self.assertIn("credential copy:", proc.stdout)
+        self.assertIn("unavailable", proc.stdout)
 
 
 if __name__ == "__main__":
